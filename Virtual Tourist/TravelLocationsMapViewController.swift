@@ -13,9 +13,6 @@ class TravelLocationsMapViewController: UIViewController, MKMapViewDelegate {
     
     // MARK: Properties
     
-    // Whether or not user has tapped "Edit" button.
-    var editModeEngaged: Bool = false
-    
     // Mapview center coordinates and zoom information.
     var mapCenterLatitude: Double?
     var mapCenterLongitude: Double?
@@ -70,15 +67,11 @@ class TravelLocationsMapViewController: UIViewController, MKMapViewDelegate {
         super.setEditing(editing, animated: animated)
         
         if editing {
-            // Edit mode is now engaged. (Tapping a pin deletes it.)
-            editModeEngaged = true
             // Reveal the bottom toolbar with "delete pins" message.
             UIView.animate(withDuration: 0.2, animations: {
                 self.mapView.frame.origin.y -= self.deletePinsBottomToolbar.frame.height
             })
         } else {
-            // Edit mode is now dis-engaged. (Tapping a pin displays its Flickr photos.)
-            editModeEngaged = false
             // Hide the bottom toolbar with "delete pins" message.
             UIView.animate(withDuration: 0.2, animations: {
                 self.mapView.frame.origin.y += self.deletePinsBottomToolbar.frame.height
@@ -135,14 +128,14 @@ extension TravelLocationsMapViewController {
     func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
         
         // If user just tapped "Edit" button, selecting a pin deletes it
-        // from the map and data structure.
-        if editModeEngaged == true {
-            // Remove pin from the map view.
-            mapView.removeAnnotation(view.annotation!)
-            
+        // from the data structure and mapview.
+        if isEditing {
             // Remove the pin from the data structure.
             PinsAndPhotosDataStructure.locationsAndPhotos.removeValue(forKey: view.annotation! as! MKPointAnnotation)
             
+            // Remove pin from the map view.
+            mapView.removeAnnotation(view.annotation!)
+
         } else {
             // Otherwise, selecting a pin takes us to its Flickr photo album:
             

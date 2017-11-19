@@ -79,7 +79,6 @@
 				1A87CF2D1FBAC66500B25812 /* Assets.xcassets */,
 				1A87CF441FBB924800B25812 /* LaunchScreen.xib */,
 				1A87CF321FBAC66500B25812 /* Info.plist */,
-				1A87CF2A1FBAC66500B25812 /* Virtual_Tourist.xcdatamodeld */,
 			);
 			path = "Virtual Tourist";
 			sourceTree = "<group>";
@@ -89,6 +88,7 @@
 			children = (
 				1A87CF4E1FBBFF8700B25812 /* FlickrClient */,
 				1A87CF481FBBB0AA00B25812 /* PinsAndPhotosDataStructure.swift */,
+				1A87CF2A1FBAC66500B25812 /* Virtual_Tourist.xcdatamodeld */,
 			);
 			name = Model;
 			sourceTree = "<group>";
