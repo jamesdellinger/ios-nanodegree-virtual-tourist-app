@@ -210,7 +210,7 @@ class FlickrClient: NSObject {
     // MARK: Load a photo from Flickr
     
     // Downloads a photo from a Flickr photo URL.
-    func downloadFlickrPhoto(_ flickrPhotoURL: String, completionHandlerForDownloadFlickrPhoto: @escaping (_ photo: UIImage?, _ success: Bool, _ errorString: String?) -> Void) {
+    func downloadFlickrPhoto(_ flickrPhotoURL: String, completionHandlerForDownloadFlickrPhoto: @escaping (_ photo: UIImage?, _ imageData: Data?, _ success: Bool, _ errorString: String?) -> Void) {
         // Make sure image downloading happens on background thread.
         DispatchQueue.global(qos: .background).async {
             // Download the photo and send to the completion handler.
@@ -218,10 +218,10 @@ class FlickrClient: NSObject {
             if let imageData = try? Data(contentsOf: imageURL!) {
                 // If successful, convert data to a UIImage
                 let photo = UIImage(data: imageData)
-                completionHandlerForDownloadFlickrPhoto(photo, true, nil)
+                completionHandlerForDownloadFlickrPhoto(photo, imageData, true, nil)
             } else {
                 let errorString = "Unable to download image from URL: \(imageURL!)"
-                completionHandlerForDownloadFlickrPhoto(nil, false, errorString)
+                completionHandlerForDownloadFlickrPhoto(nil, nil, false, errorString)
             }
         }
     }

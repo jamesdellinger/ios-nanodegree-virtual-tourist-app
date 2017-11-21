@@ -9,19 +9,42 @@
 import Foundation
 import UIKit
 import MapKit
+import CoreData
 
-class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectionViewDelegate, UICollectionViewDataSource {
+class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectionViewDelegate, UICollectionViewDataSource, NSFetchedResultsControllerDelegate {
+    
+    // MARK: Photo Fetched Results Controller
+    
+    lazy var photoFetchedResultsController: NSFetchedResultsController<Photo> = { () -> NSFetchedResultsController<Photo> in
+        
+        let photoFetchRequest = NSFetchRequest<Photo>(entityName: "Photo")
+        photoFetchRequest.sortDescriptors = []
+        
+        if let pin = selectedPin {
+            let predicate = NSPredicate(format: "pin == %@", pin)
+            photoFetchRequest.predicate = predicate
+        }
+        
+        let photoFetchedResultsController = NSFetchedResultsController(fetchRequest: photoFetchRequest, managedObjectContext: self.sharedContext, sectionNameKeyPath: nil, cacheName: nil)
+        photoFetchedResultsController.delegate = self
+        
+        return photoFetchedResultsController
+    }()
+    
+    // MARK: Shared managed object context
+    
+    var sharedContext = CoreDataStack.sharedInstance().managedObjectContext
     
     // MARK: Properties
     
-    // An array of photos URLs associated with the pin.
-    var pinPhotoURLs: [String]?
     // The pin that the user selected.
-    var pin: MKPointAnnotation?
+    var selectedPin: Pin?
     // Index paths of collection cells that the user has selected
     var selectedCellIndexPaths: [IndexPath] = []
     // Number of cells to be displayed in the collectiom boew
     var numberOfItemsInSection: Int = 0
+    // An array of photos URLs associated with the pin.
+    var pinPhotoURLs: [String]?
     
     // MARK: IBOutlets
     
@@ -42,7 +65,7 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         super.viewDidLoad()
         
         // Display the pin on the map view inside this controller.
-        displayPinInMapView(pin: pin!)
+        displayPinInMapView(pin: selectedPin!)
         
         // Get collection flow layout collection view controller first loads
         if UIDevice.current.orientation.isPortrait {
@@ -54,10 +77,22 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         // The collection view must allow multiple cells to be selected.
         collectionView.allowsMultipleSelection = true
         
-        // If the pin doesn't already have any photos saved, load a new set of photos for the
-        // pin so they can be displayed in the collection view.
-        if PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]!.count == 0 {
-            loadPinPhotos(pin!)
+        // Fetch the pin's photos from core data.
+        var photoFetchError: NSError?
+        do {
+            try photoFetchedResultsController.performFetch()
+        } catch let error as NSError {
+            photoFetchError = error
+        }
+        
+        if let photoFetchError = photoFetchError {
+            print("Error performing photo fetch: \(photoFetchError)")
+        }
+        
+        // If the pin doesn't already have any photos saved in core data, or download a
+        // new set of photos for the pin so they can be displayed in the collection view.
+        if let fetchedPhotosForPin = photoFetchedResultsController.fetchedObjects, fetchedPhotosForPin.count == 0 {
+            downloadPinPhotos(selectedPin!)
         }
     }
     
@@ -84,25 +119,36 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         // a fresh set of photos from Flickr for the pin.
         if newCollectionBarButton.title == "New Collection" {
             // Clear the photos stored in the data structure.
-            PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]! = []
-            loadPinPhotos(pin!)
+            if let storedPhotos = photoFetchedResultsController.fetchedObjects {
+                for photo in storedPhotos {
+                    sharedContext.delete(photo)
+                }
+            }
+            performUIUpdatesOnMain {
+                // Save the context after deleting all of the pin's photos from core data.
+                CoreDataStack.sharedInstance().saveContext()
+            }
+            
+            // Download a new set of photos for the pin.
+            downloadPinPhotos(selectedPin!)
         }
         
         // If title of bottom button is "Remove Selected Photos" we know that
         // at least one collection view cell has been selected, and function of
         // tapping this button should be deleting selected cells.
-        
         if newCollectionBarButton.title == "Remove Selected Photos" {
-            
-            // Reload the data for the collection view so that performing the batch update
-            // and deleting the cells from collection view throws no index errors.
-            self.collectionView.reloadData()
             
             // Perform a batch update to display any and all cell deletion animations simultaneously.
             collectionView.performBatchUpdates({
                 // Delete all corresponding photos from the data structure
-                for path in selectedCellIndexPaths {
-                    PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]!.remove(at: (path as NSIndexPath).item)
+                for indexPath in selectedCellIndexPaths {
+                    if let photos = photoFetchedResultsController.fetchedObjects {
+                        sharedContext.delete(photos[(indexPath as NSIndexPath).item])
+                        performUIUpdatesOnMain {
+                            // Save the context after deleting a photo from core data.
+                            CoreDataStack.sharedInstance().saveContext()
+                        }
+                    }
                 }
                 
                 // Delete all selected cells from the collection view
@@ -116,16 +162,20 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         newCollectionBarButton.title = "New Collection"
     }
     
-    
-    
     // MARK: Display pin inside the map view.
     
-    func displayPinInMapView(pin: MKPointAnnotation) {
+    func displayPinInMapView(pin: Pin) {
         
         // Get the pin's CLLocation so that pin's coordinates can be reverse geocoded.
-        let pinLatitude = pin.coordinate.latitude
-        let pinLongitude = pin.coordinate.longitude
+        let pinLatitude = pin.latitude
+        let pinLongitude = pin.longitude
         let pinLocation = CLLocation(latitude: pinLatitude, longitude: pinLongitude)
+        
+        // Convert the pin object to MKAnnotation object so that it can be
+        // displayed within this view controller's map view.
+        let pinAnnotation = MKPointAnnotation()
+        pinAnnotation.coordinate.latitude = pinLatitude
+        pinAnnotation.coordinate.longitude = pinLongitude
         
         // Reverse geocode the coordinates of the pin so that the resulting address string can
         // be displayed as the title of the map pin annotation if/when user taps on the pin.
@@ -134,13 +184,13 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
             // Set the title of the annotation to the address that was
             // reverse geo coded. (Returns "No Matching Addresses Found" if
             // reverse geocode lookup was unsuccessful.)
-            pin.title = locationAddress
+            pinAnnotation.title = locationAddress
             
             // Add the pin annotation to the map.
-            self.pinMapView.addAnnotation(pin)
+            self.pinMapView.addAnnotation(pinAnnotation)
             
             // Make sure the map is centered on this one annotation.
-            self.pinMapView.centerCoordinate = pin.coordinate
+            self.pinMapView.centerCoordinate = pinAnnotation.coordinate
             
             // And make sure the map is zoomed in fairly close in to the pin.
             self.pinMapView.camera.altitude = 1000.0
@@ -149,11 +199,11 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
     
     // MARK: Load a new set of images for a pin
     
-    func loadPinPhotos(_ pin: MKPointAnnotation) {
+    func downloadPinPhotos(_ pin: Pin) {
         // Get an array of Flickr URL strings for Flickr photos taken at or near
         // the geographic coordinates of the selected pin.
-        let latitude = pin.coordinate.latitude
-        let longitude = pin.coordinate.longitude
+        let latitude = pin.latitude
+        let longitude = pin.longitude
         
         // Get a fresh set of URLs for Flickr photos taken in the vicinity of the
         // pin's geographic coordinates.
@@ -195,7 +245,9 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
                 
                 // Update the photo which will be displayed in Photo Detail controller to that
                 // which corresponds to the collection cell which the user has long pressed on.
-                controller.photo = PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]![(indexPath as NSIndexPath).item]
+                if let storedPhotoForCell = photoFetchedResultsController.fetchedObjects?[(indexPath as NSIndexPath).item] {
+                    controller.photo = UIImage(data: storedPhotoForCell.imageData! as Data)
+                }
                 
                 // Push the view controller.
                 self.navigationController?.pushViewController(controller, animated: true)
@@ -240,14 +292,15 @@ extension PhotoAlbumViewController {
         
         // The number of Flickr photos that are available for the pin, which is the number
         // of cells that will be displayed inside this collection view:
-        
-        if PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]!.count > 0 {
-            numberOfItemsInSection = PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]!.count
-        } else if let pinPhotoURLs = pinPhotoURLs {
+        if let fetchedPhotos = photoFetchedResultsController.fetchedObjects, fetchedPhotos.count > 0 {
+            numberOfItemsInSection = fetchedPhotos.count
+        }
+        else if let pinPhotoURLs = pinPhotoURLs {
             numberOfItemsInSection = pinPhotoURLs.count
         } else {
             numberOfItemsInSection = 0
         }
+        print(numberOfItemsInSection)
         return numberOfItemsInSection
     }
     
@@ -259,12 +312,23 @@ extension PhotoAlbumViewController {
         // The cell to be dequeued
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "PhotoCollectionViewCell", for: indexPath) as! PhotoCollectionViewCell
         
-        // If a photo corresponding to the cell's item index has been stored in the data structure,
-        // then display that stored photo in the cell.
-        if PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]!.count > (indexPath as NSIndexPath).item {
-            if let storedPhoto = PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]![(indexPath as NSIndexPath).item] as UIImage? {
-                cell.collectionCellImageView?.image = storedPhoto
-            }
+        // Fetch the pin's photos from core data.
+        var photoFetchError: NSError?
+        do {
+            try photoFetchedResultsController.performFetch()
+        } catch let error as NSError {
+            photoFetchError = error
+        }
+        
+        if let photoFetchError = photoFetchError {
+            print("Error performing photo fetch: \(photoFetchError)")
+        }
+        
+        
+        if let fetchedPhotos = photoFetchedResultsController.fetchedObjects, fetchedPhotos.count > 0, fetchedPhotos.count > (indexPath as NSIndexPath).item {
+
+            let storedPhotoForCell = fetchedPhotos[(indexPath as NSIndexPath).item]
+            cell.collectionCellImageView?.image = UIImage(data: storedPhotoForCell.imageData! as Data)
         } else {
             // If no photo has been stored, then get the URL of the photo that corresponds to the item
             // index of the cell.
@@ -278,11 +342,20 @@ extension PhotoAlbumViewController {
             cell.activityIndicator.startAnimating()
             
             // Then download the photo (task happens on background thread) and convert to a UIImage.
-            FlickrClient.sharedInstance().downloadFlickrPhoto(photoURL) { (photo, success, errorString) in
+            FlickrClient.sharedInstance().downloadFlickrPhoto(photoURL) { (photo, imageData, success, errorString) in
                 if success {
                     // If photo download successful, add to data structure, and
                     // display that photo inside the cell, using the main thread.
-                    PinsAndPhotosDataStructure.locationsAndPhotos[self.pin!]!.append(photo!)
+                    let photoToSave = Photo(imageData: imageData! as NSData, context: self.sharedContext)
+                    if let pin = self.selectedPin {
+                        photoToSave.pin = pin
+                        performUIUpdatesOnMain {
+                            // Save the context after storing a photo in core data.
+                            CoreDataStack.sharedInstance().saveContext()
+                        }
+                    }
+                    
+                    // Set image displayed in cell's imageView to the photo (UIImage) that was just downloaded.
                     performUIUpdatesOnMain {
                         cell.collectionCellImageView?.image = photo
                         // Stop animating the activity indicator once the image has been displayed in the cell.
@@ -380,7 +453,7 @@ extension PhotoAlbumViewController {
 
 // MARK: - CLPlacemark compact address
 
-/* Allows the display of a compact address string for any CLPlacemark object. */
+// Allows the display of a compact address string for any CLPlacemark object.
 extension CLPlacemark {
     
     // Build a nicely formatted address if at least one component (country/state/postal code/
