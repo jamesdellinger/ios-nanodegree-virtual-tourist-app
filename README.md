@@ -4,7 +4,7 @@
 
 ![Platform iOS](https://img.shields.io/badge/nanodegree-iOS-blue.svg)
 
-This repository contains the Virtual Tourist app project for the iOS Networking with Swift course in Udacity's iOS Nanodegree.
+This repository contains the Virtual Tourist app project for the iOS Persistence and Core Data course in Udacity's iOS Nanodegree.
 
 With the following user-friendly tweaks:
 
