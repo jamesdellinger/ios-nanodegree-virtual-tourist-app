@@ -102,15 +102,15 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         }
     }
     
-    // MARK: Reload all photos or delete selected photos
+    // MARK: Get a new collection of photos or delete selected photos
     
-    @IBAction func reloadOrDeletePhotos(_ sender: Any) {
+    @IBAction func getNewCollectionOrDeletePhotos(_ sender: Any) {
         
         // If any photo cells are selected, tapping bottom button deletes them.
         if bottomButtonDeletesSelectedPhotos() {
             deletePhotos()
         } else {
-            getNewCollections()
+            getNewCollection()
         }
     }
     
@@ -125,9 +125,9 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         }
     }
     
-    // Delete all the pin's photos from core data, and reload a new batch
+    // Delete all the pin's photos from core data, and download/create a new batch
     // of photos and save to them to the pin.
-    func getNewCollections() {
+    func getNewCollection() {
         // Clear the photos stored in the data structure.
         if let storedPhotos = photoFetchedResultsController.fetchedObjects {
             for photo in storedPhotos {
