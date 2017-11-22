@@ -13,9 +13,10 @@ import CoreData
 @objc(Photo)
 public class Photo: NSManagedObject {
     
-    convenience init(imageData: NSData, context: NSManagedObjectContext) {
+    convenience init(url: String, imageData: NSData, context: NSManagedObjectContext) {
         if let entity = NSEntityDescription.entity(forEntityName: "Photo", in: context) {
             self.init(entity: entity, insertInto: context)
+            self.url = url
             self.imageData = imageData
         } else {
             fatalError("Unable to find entity name!")

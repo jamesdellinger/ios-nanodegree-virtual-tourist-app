@@ -47,16 +47,33 @@ class TravelLocationsMapViewController: UIViewController, MKMapViewDelegate, NSF
         mapCenterLongitude = UserDefaults.standard.double(forKey: "MapCenterLongitude")
         mapSpanLatitudeDelta = UserDefaults.standard.double(forKey: "MapSpanLatitudeDelta")
         mapSpanLongitudeDelta = UserDefaults.standard.double(forKey: "MapSpanLongitudeDelta")
+
+        // If app has been launched before, set mapview to display whatever view was being
+        // displayed the last time user saw this screen.
+        if UserDefaults.standard.bool(forKey: "HasLaunchedBefore") == true {
+            // If mapview center coordinates and zoom level properties are not nil, set the
+            // mapview's center coordinates and zoom level to whatever values they were when
+            // the user last was on this screen.
+            if let mapCenterLatitude = mapCenterLatitude, let mapCenterLongitude = mapCenterLongitude, let mapSpanLatitudeDelta = mapSpanLatitudeDelta, let mapSpanLongitudeDelta = mapSpanLongitudeDelta {
+                
+                let mapLocation = CLLocationCoordinate2D(latitude: mapCenterLatitude, longitude: mapCenterLongitude)
+                let mapSpan = MKCoordinateSpanMake(mapSpanLatitudeDelta, mapSpanLongitudeDelta)
+                
+                let mapRegion = MKCoordinateRegionMake(mapLocation, mapSpan)
+                mapView.setRegion(mapRegion, animated: false)
+            }
+        }
         
-        // If mapview center coordinates and zoom level properties are not nil, set the
-        // mapview's center coordinates and zoom level to whatever values they were when
-        // the user last was on this screen.
-        if let mapCenterLatitude = mapCenterLatitude, let mapCenterLongitude = mapCenterLongitude, let mapSpanLatitudeDelta = mapSpanLatitudeDelta, let mapSpanLongitudeDelta = mapSpanLongitudeDelta {
-            let mapLocation = CLLocationCoordinate2D(latitude: mapCenterLatitude, longitude: mapCenterLongitude)
-            let mapSpan = MKCoordinateSpanMake(mapSpanLatitudeDelta, mapSpanLongitudeDelta)
+        // On first app launch ever, set key "HasLaunchedBefore" to true
+        if UserDefaults.standard.bool(forKey: "HasLaunchedBefore") == false {
             
-            let mapRegion = MKCoordinateRegionMake(mapLocation, mapSpan)
-            mapView.setRegion(mapRegion, animated: false)
+            UserDefaults.standard.set(true, forKey: "HasLaunchedBefore")
+            
+            // On first app launch ever, set values of mapview userdefaults keys to default
+            // displayed mapview. For scenarios where user launches the app, doensn't refocus mapview,
+            // and then exits, if the following four keys aren't set now, mapview will be in the
+            // middle of the ocean when user launches app the second time.
+            updateMapViewUserDefaultsKeys(mapView)
         }
         
         // Fetch any pins user has already saved:
@@ -272,6 +289,12 @@ extension TravelLocationsMapViewController {
     // that these will persist and next time user returns to this screen, the mapview
     // will display the same region as it had the last time the user was at this screen.
     func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+        updateMapViewUserDefaultsKeys(mapView)
+    }
+    
+    // Sets a value for each attribute of the map view that will be needed to re-display
+    // the view later.
+    func updateMapViewUserDefaultsKeys(_ mapView: MKMapView) {
         UserDefaults.standard.set(mapView.region.center.latitude, forKey: "MapCenterLatitude")
         UserDefaults.standard.set(mapView.region.center.longitude, forKey: "MapCenterLongitude")
         UserDefaults.standard.set(mapView.region.span.latitudeDelta, forKey: "MapSpanLatitudeDelta")

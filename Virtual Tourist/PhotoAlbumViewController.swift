@@ -39,12 +39,11 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
     
     // The pin that the user selected.
     var selectedPin: Pin?
-    // Index paths of collection cells that the user has selected
-    var selectedCellIndexPaths: [IndexPath] = []
-    // Number of cells to be displayed in the collectiom boew
-    var numberOfItemsInSection: Int = 0
-    // An array of photos URLs associated with the pin.
-    var pinPhotoURLs: [String]?
+    // Index paths of collection cells that the user has selected.
+    var selectedCellIndexPaths = [IndexPath]()
+    // Keep track of collection cell insertions, and deletions.
+    var insertedCellIndexPaths: [IndexPath]!
+    var deletedCellIndexPaths: [IndexPath]!
     
     // MARK: IBOutlets
     
@@ -78,21 +77,12 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         collectionView.allowsMultipleSelection = true
         
         // Fetch the pin's photos from core data.
-        var photoFetchError: NSError?
-        do {
-            try photoFetchedResultsController.performFetch()
-        } catch let error as NSError {
-            photoFetchError = error
-        }
-        
-        if let photoFetchError = photoFetchError {
-            print("Error performing photo fetch: \(photoFetchError)")
-        }
+        performPhotoFetchRequest(photoFetchedResultsController)
         
         // If the pin doesn't already have any photos saved in core data, or download a
         // new set of photos for the pin so they can be displayed in the collection view.
         if let fetchedPhotosForPin = photoFetchedResultsController.fetchedObjects, fetchedPhotosForPin.count == 0 {
-            downloadPinPhotos(selectedPin!)
+            downloadPinPhotoURLs(selectedPin!)
         }
     }
     
@@ -112,54 +102,62 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
     }
     
     // MARK: Reload all photos or delete selected photos
+    
     @IBAction func reloadOrDeletePhotos(_ sender: Any) {
         
-        // If title of bottom button is "New Collection" we know that no collection
-        // view cells have been selected and so tapping this button should load and store
-        // a fresh set of photos from Flickr for the pin.
+        // If any photo cells are selected, tapping bottom button deletes them.
+        if bottomButtonDeletesSelectedPhotos() {
+            deletePhotos()
+        } else {
+            reloadPhotos()
+        }
+    }
+    
+    // If title of bottom button is "New Collection" we know that no collection
+    // view cells have been selected and so tapping this button should load and store
+    // a fresh set of photos from Flickr for the pin.
+    func bottomButtonDeletesSelectedPhotos() -> Bool {
         if newCollectionBarButton.title == "New Collection" {
-            // Clear the photos stored in the data structure.
-            if let storedPhotos = photoFetchedResultsController.fetchedObjects {
-                for photo in storedPhotos {
-                    sharedContext.delete(photo)
-                }
+            return false
+        } else {
+            return true
+        }
+    }
+    
+    // Delete all the pin's photos from core data, and reload a new batch
+    // of photos and save to them to the pin.
+    func reloadPhotos() {
+        // Clear the photos stored in the data structure.
+        if let storedPhotos = photoFetchedResultsController.fetchedObjects {
+            for photo in storedPhotos {
+                sharedContext.delete(photo)
             }
-            performUIUpdatesOnMain {
-                // Save the context after deleting all of the pin's photos from core data.
-                CoreDataStack.sharedInstance().saveContext()
-            }
-            
-            // Download a new set of photos for the pin.
-            downloadPinPhotos(selectedPin!)
+        }
+        performUIUpdatesOnMain {
+            // Save the context after deleting all of the pin's photos from core data.
+            CoreDataStack.sharedInstance().saveContext()
         }
         
-        // If title of bottom button is "Remove Selected Photos" we know that
-        // at least one collection view cell has been selected, and function of
-        // tapping this button should be deleting selected cells.
-        if newCollectionBarButton.title == "Remove Selected Photos" {
-            
-            // Perform a batch update to display any and all cell deletion animations simultaneously.
-            collectionView.performBatchUpdates({
-                // Delete all corresponding photos from the data structure
-                for indexPath in selectedCellIndexPaths {
-                    if let photos = photoFetchedResultsController.fetchedObjects {
-                        sharedContext.delete(photos[(indexPath as NSIndexPath).item])
-                        performUIUpdatesOnMain {
-                            // Save the context after deleting a photo from core data.
-                            CoreDataStack.sharedInstance().saveContext()
-                        }
-                    }
+        // Download a new set of photos for the pin.
+        downloadPinPhotoURLs(selectedPin!)
+    }
+    
+    // Delete all selected photos from core data.
+    func deletePhotos() {
+        for indexPath in selectedCellIndexPaths {
+            if let photos = photoFetchedResultsController.fetchedObjects {
+                sharedContext.delete(photos[(indexPath as NSIndexPath).item])
+                performUIUpdatesOnMain {
+                    // Save the context after deleting a photo from core data.
+                    CoreDataStack.sharedInstance().saveContext()
                 }
-                
-                // Delete all selected cells from the collection view
-                collectionView.deleteItems(at: selectedCellIndexPaths)
-            })
+            }
         }
-        
         // Reset array that tracks selected cells now that all selected cells have been deleted.
-        selectedCellIndexPaths = []
+        selectedCellIndexPaths.removeAll()
+        
         // Also change title of bar button back to "New Collection"
-        newCollectionBarButton.title = "New Collection"
+        updateBottomButtonTitle()
     }
     
     // MARK: Display pin inside the map view.
@@ -197,9 +195,28 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         }
     }
     
+    // MARK: Perform photo fetch request
+    
+    // Make the photo fetch request, taking as a parameter a the fetched results controller created
+    // by the photoFetchedResultsController lazy var.
+    func performPhotoFetchRequest(_ photoFetchedResultsController: NSFetchedResultsController<Photo>?) {
+        if let photoFetchedResultsController = photoFetchedResultsController {
+            var photoFetchError: NSError?
+            do {
+                try photoFetchedResultsController.performFetch()
+            } catch let error as NSError {
+                photoFetchError = error
+            }
+            
+            if let photoFetchError = photoFetchError {
+                print("Error performing photo fetch: \(photoFetchError)")
+            }
+        }
+    }
+    
     // MARK: Load a new set of images for a pin
     
-    func downloadPinPhotos(_ pin: Pin) {
+    func downloadPinPhotoURLs(_ pin: Pin) {
         // Get an array of Flickr URL strings for Flickr photos taken at or near
         // the geographic coordinates of the selected pin.
         let latitude = pin.latitude
@@ -210,14 +227,20 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         FlickrClient.sharedInstance().getFlickrPhotosURLArrayForPin(latitude, longitude) { (flickrPhotosURLArrayForPin, success, errorString) in
             performUIUpdatesOnMain {
                 if success {
-                    // If successful, set the pinPhotoURLs property to the array of URLs returned in
-                    // the completion handler.
-                    self.pinPhotoURLs = flickrPhotosURLArrayForPin!
-                    // Images will be displayed so no need to display a error message.
+                    // If successful, images will be displayed so no need to display a error message.
                     self.statusLabel.isHidden = true
-                    // Reload the collection view, which will now download images from the
-                    // URLs just received, which are now contained in the pinPhotoURLs variable.
-                    self.collectionView.reloadData()
+
+                    // Add a new Photo object to core data for each URL retrieved from Flickr
+                    for url in flickrPhotosURLArrayForPin! {
+                        let photoToSave = Photo(context: self.sharedContext)
+                        photoToSave.url = url
+                        // Ensure that newly saved photo is associated with currently selected Pin
+                        photoToSave.pin = self.selectedPin!
+                        
+                        // Save the context after storing a photo in core data.
+                        CoreDataStack.sharedInstance().saveContext()
+                    }
+                    
                 } else {
                     // If no URLs could be retrieved, then no cells will be displayed, so the
                     // error message will be displayed in the center of the collection view.
@@ -235,9 +258,7 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         if gestureRecognizer.state == .began {
             
             let pointOfLongPress = gestureRecognizer.location(in: collectionView)
-            
             let indexPathCorrespondingToPressPoint = collectionView.indexPathForItem(at: pointOfLongPress)
-            
             if let indexPath = indexPathCorrespondingToPressPoint {
                 
                 // Get the location Photo Detail View Controller from the Storyboard
@@ -245,8 +266,8 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
                 
                 // Update the photo which will be displayed in Photo Detail controller to that
                 // which corresponds to the collection cell which the user has long pressed on.
-                if let storedPhotoForCell = photoFetchedResultsController.fetchedObjects?[(indexPath as NSIndexPath).item] {
-                    controller.photo = UIImage(data: storedPhotoForCell.imageData! as Data)
+                if let storedPhotoForCell = photoFetchedResultsController.fetchedObjects?[(indexPath as NSIndexPath).item], let storedPhotoImageData = storedPhotoForCell.imageData {
+                    controller.photo = UIImage(data: storedPhotoImageData as Data)
                 }
                 
                 // Push the view controller.
@@ -290,18 +311,15 @@ extension PhotoAlbumViewController {
     // Get the number of cells (photos) that will appear in the collection view
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         
-        // The number of Flickr photos that are available for the pin, which is the number
-        // of cells that will be displayed inside this collection view:
-        if let fetchedPhotos = photoFetchedResultsController.fetchedObjects, fetchedPhotos.count > 0 {
-            numberOfItemsInSection = fetchedPhotos.count
+        // Number of photos associated with the pin (initial default is 0, will  be
+        // updated with amount of Photo objects (either as a URL or imageData) fetched
+        // with the fetched results controller.
+        var numberOfFetchedPhotos = 0
+
+        if let fetchedPhotos  = photoFetchedResultsController.fetchedObjects {
+            numberOfFetchedPhotos = fetchedPhotos.count
         }
-        else if let pinPhotoURLs = pinPhotoURLs {
-            numberOfItemsInSection = pinPhotoURLs.count
-        } else {
-            numberOfItemsInSection = 0
-        }
-        print(numberOfItemsInSection)
-        return numberOfItemsInSection
+        return numberOfFetchedPhotos
     }
     
     // MARK: Display cells
@@ -312,58 +330,55 @@ extension PhotoAlbumViewController {
         // The cell to be dequeued
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "PhotoCollectionViewCell", for: indexPath) as! PhotoCollectionViewCell
         
-        // Fetch the pin's photos from core data.
-        var photoFetchError: NSError?
-        do {
-            try photoFetchedResultsController.performFetch()
-        } catch let error as NSError {
-            photoFetchError = error
-        }
+        // Display the placeholder image in the cell, which will remain visible until the photo
+        // that exists at the URL is loaded.
+        cell.collectionCellImageView?.image = #imageLiteral(resourceName: "default-placeholder")
         
-        if let photoFetchError = photoFetchError {
-            print("Error performing photo fetch: \(photoFetchError)")
-        }
+        // Also begin animating the activty indicator.
+        cell.activityIndicator.startAnimating()
         
-        
-        if let fetchedPhotos = photoFetchedResultsController.fetchedObjects, fetchedPhotos.count > 0, fetchedPhotos.count > (indexPath as NSIndexPath).item {
+        // If there is at least one Photo stored in core data for the current Pin, display each stored
+        // Photo in its corresponding collection view cell.
+        if let fetchedPhotos = photoFetchedResultsController.fetchedObjects, fetchedPhotos.count > 0 {
 
+            // The Photo stored in core data that corresponds to this particular cell
             let storedPhotoForCell = fetchedPhotos[(indexPath as NSIndexPath).item]
-            cell.collectionCellImageView?.image = UIImage(data: storedPhotoForCell.imageData! as Data)
-        } else {
-            // If no photo has been stored, then get the URL of the photo that corresponds to the item
-            // index of the cell.
-            let photoURL = pinPhotoURLs![(indexPath as NSIndexPath).item]
             
-            // Display the placeholder image in the cell, which will remain visible until the photo
-            // that exists at the URL is loaded.
-            cell.collectionCellImageView?.image = #imageLiteral(resourceName: "default-placeholder")
-            
-            // Also begin animating the activty indicator.
-            cell.activityIndicator.startAnimating()
-            
-            // Then download the photo (task happens on background thread) and convert to a UIImage.
-            FlickrClient.sharedInstance().downloadFlickrPhoto(photoURL) { (photo, imageData, success, errorString) in
-                if success {
-                    // If photo download successful, add to data structure, and
-                    // display that photo inside the cell, using the main thread.
-                    let photoToSave = Photo(imageData: imageData! as NSData, context: self.sharedContext)
-                    if let pin = self.selectedPin {
-                        photoToSave.pin = pin
-                        performUIUpdatesOnMain {
-                            // Save the context after storing a photo in core data.
-                            CoreDataStack.sharedInstance().saveContext()
+            // If stored image data is present for the cell's Photo, then convert to a
+            // UIImage and display within cell's imageview.
+            if let storedImageDataForPhoto = storedPhotoForCell.imageData {
+                
+                cell.collectionCellImageView?.image = UIImage(data: storedImageDataForPhoto as Data)
+                
+                // Stop animating the activity indicator once the image has been displayed in the cell.
+                cell.activityIndicator.stopAnimating()
+                
+            } else {
+                
+                // If no photo image data has been stored for the Photo, then download the image data
+                // right now from the Photo's stored URL.
+                if let storedPhotoURL = storedPhotoForCell.url {
+                    
+                    // Then download the photo (task happens on background thread) and convert to a UIImage.
+                    FlickrClient.sharedInstance().downloadFlickrPhoto(storedPhotoURL) { (photo, imageData, success, errorString) in
+                        if success {
+                            // If photo/image data download is successful, store the image data in core data.
+                            storedPhotoForCell.imageData = imageData! as NSData
+                            
+                            performUIUpdatesOnMain {
+                                // Then, save the context after storing the photo's image data in core data.
+                                CoreDataStack.sharedInstance().saveContext()
+                                
+                                // And set image displayed in cell's imageView to the photo (UIImage) that was just downloaded.
+                                cell.collectionCellImageView?.image = photo
+                                // Lastly, stop animating the activity indicator once the image has been displayed in the cell.
+                                cell.activityIndicator.stopAnimating()
+                            }
+                        }
+                        else {
+                            print(errorString!)
                         }
                     }
-                    
-                    // Set image displayed in cell's imageView to the photo (UIImage) that was just downloaded.
-                    performUIUpdatesOnMain {
-                        cell.collectionCellImageView?.image = photo
-                        // Stop animating the activity indicator once the image has been displayed in the cell.
-                        cell.activityIndicator.stopAnimating()
-                    }
-                }
-                else {
-                    print(errorString!)
                 }
             }
         }
@@ -377,17 +392,17 @@ extension PhotoAlbumViewController {
 
         // Append the index path of just the selected cell to the array that tracks all cells currently selected.
         selectedCellIndexPaths.append(indexPath)
-        
+
         // Change label of bar button when user selects at least one photo. If one or more
         // photos are selected, tapping the bar button will remove those photos.
-        newCollectionBarButton.title = "Remove Selected Photos"
+        updateBottomButtonTitle()
     }
     
     // MARK: Deselecting photos
-    
+
     // Let user deselect multiple photos.
     func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
-        
+
         // Remove the index path of the just deselected cell from the array that tracks index paths of
         // all cells currently selected.
         if let pathToRemove = selectedCellIndexPaths.index(of: indexPath) {
@@ -397,9 +412,63 @@ extension PhotoAlbumViewController {
         // Once the final cell has been deselected, there are no more selected cells, which means the function
         // of the bar button changes back adding a new photo collection for the pin. Check for this case here and
         // update button's title text if necessary.
-        if selectedCellIndexPaths.count == 0 {
+        updateBottomButtonTitle()
+    }
+    
+    func updateBottomButtonTitle() {
+        if selectedCellIndexPaths.count > 0 {
+            newCollectionBarButton.title = "Remove Selected Photos"
+        } else {
             newCollectionBarButton.title = "New Collection"
         }
+    }
+}
+
+// MARK: Fetched Results Controller Delegate
+
+extension PhotoAlbumViewController {
+    
+    // The following three methods are invoked whenever changes are made to Core Data:
+    
+    // Creates two fresh arrays to record the index paths that will be changed.
+    func controllerWillChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+        
+        // Start out with empty arrays for each change type (insert or delete).
+        insertedCellIndexPaths = [IndexPath]()
+        deletedCellIndexPaths = [IndexPath]()
+    }
+    
+    // Keep track of everytime a Photo object is added or deleted.
+    func controller(_ controller: NSFetchedResultsController<NSFetchRequestResult>, didChange anObject: Any, at indexPath: IndexPath?, for type: NSFetchedResultsChangeType, newIndexPath: IndexPath?) {
+        
+        switch type {
+            
+        case .insert:
+            // Tracking when a new Photo object has been added to core data.
+            insertedCellIndexPaths.append(newIndexPath!)
+            break
+        case .delete:
+            // Tracking when a Photo object has been deleted from Core Data.
+            deletedCellIndexPaths.append(indexPath!)
+            break
+        default:
+            break
+        }
+    }
+    
+    // Invoked after all of the changed objects in the current batch have been collected
+    // into the two index path arrays (insert,  or delete).
+    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+
+        // Loop through the arrays and perform the changes in one fell swoop (as a batch).
+        collectionView.performBatchUpdates({() -> Void in
+            for indexPath in self.insertedCellIndexPaths {
+                self.collectionView.insertItems(at: [indexPath])
+            }
+            for indexPath in self.deletedCellIndexPaths {
+                self.collectionView.deleteItems(at: [indexPath])
+            }
+        }, completion: nil)
     }
 }
 
