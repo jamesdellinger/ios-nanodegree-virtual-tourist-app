@@ -197,7 +197,6 @@ class TravelLocationsMapViewController: UIViewController, MKMapViewDelegate, NSF
             
             // Save the context after deleting the pin from core data.
             CoreDataStack.sharedInstance().saveContext()
-            print("Pin Deleted!")
             
             // Also remove the pin from the map view.
             mapView.removeAnnotation(selectedPinView.annotation!)
@@ -277,7 +276,6 @@ extension TravelLocationsMapViewController {
                 
                 // And if it exists, send this pin to the view controller that will be pushed.
                 controller.selectedPin = correspondingPinInCoreData
-                print("Selected PIN: \(correspondingPinInCoreData) END")
                 
                 // Push the view controller.
                 self.navigationController?.pushViewController(controller, animated: true)

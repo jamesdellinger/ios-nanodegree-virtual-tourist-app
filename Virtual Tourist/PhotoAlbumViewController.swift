@@ -79,10 +79,11 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         // Fetch the pin's photos from core data.
         performPhotoFetchRequest(photoFetchedResultsController)
         
-        // If the pin doesn't already have any photos saved in core data, or download a
-        // new set of photos for the pin so they can be displayed in the collection view.
+        // If the pin doesn't already have any photos saved in core data,
+        // retrieve up to 45 random photo URLs from Flickr and save a
+        // Photo object in core data under the selected pin, for each of these URLs.
         if let fetchedPhotosForPin = photoFetchedResultsController.fetchedObjects, fetchedPhotosForPin.count == 0 {
-            downloadPinPhotoURLs(selectedPin!)
+            FlickrClient.sharedInstance().getAndStoreFlickrPhotoURLsForPin(self.selectedPin!)
         }
     }
     
@@ -109,7 +110,7 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
         if bottomButtonDeletesSelectedPhotos() {
             deletePhotos()
         } else {
-            reloadPhotos()
+            getNewCollections()
         }
     }
     
@@ -126,20 +127,22 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
     
     // Delete all the pin's photos from core data, and reload a new batch
     // of photos and save to them to the pin.
-    func reloadPhotos() {
+    func getNewCollections() {
         // Clear the photos stored in the data structure.
         if let storedPhotos = photoFetchedResultsController.fetchedObjects {
             for photo in storedPhotos {
                 sharedContext.delete(photo)
             }
-        }
-        performUIUpdatesOnMain {
+            
             // Save the context after deleting all of the pin's photos from core data.
-            CoreDataStack.sharedInstance().saveContext()
+            performUIUpdatesOnMain {
+                CoreDataStack.sharedInstance().saveContext()
+            }
         }
         
-        // Download a new set of photos for the pin.
-        downloadPinPhotoURLs(selectedPin!)
+        // Retrieve a new set of photo URLs from flickr and save them as
+        // Photo objects under the selected pin.
+        FlickrClient.sharedInstance().getAndStoreFlickrPhotoURLsForPin(self.selectedPin!)
     }
     
     // Delete all selected photos from core data.
@@ -210,43 +213,6 @@ class PhotoAlbumViewController: UIViewController, MKMapViewDelegate, UICollectio
             
             if let photoFetchError = photoFetchError {
                 print("Error performing photo fetch: \(photoFetchError)")
-            }
-        }
-    }
-    
-    // MARK: Load a new set of images for a pin
-    
-    func downloadPinPhotoURLs(_ pin: Pin) {
-        // Get an array of Flickr URL strings for Flickr photos taken at or near
-        // the geographic coordinates of the selected pin.
-        let latitude = pin.latitude
-        let longitude = pin.longitude
-        
-        // Get a fresh set of URLs for Flickr photos taken in the vicinity of the
-        // pin's geographic coordinates.
-        FlickrClient.sharedInstance().getFlickrPhotosURLArrayForPin(latitude, longitude) { (flickrPhotosURLArrayForPin, success, errorString) in
-            performUIUpdatesOnMain {
-                if success {
-                    // If successful, images will be displayed so no need to display a error message.
-                    self.statusLabel.isHidden = true
-
-                    // Add a new Photo object to core data for each URL retrieved from Flickr
-                    for url in flickrPhotosURLArrayForPin! {
-                        let photoToSave = Photo(context: self.sharedContext)
-                        photoToSave.url = url
-                        // Ensure that newly saved photo is associated with currently selected Pin
-                        photoToSave.pin = self.selectedPin!
-                        
-                        // Save the context after storing a photo in core data.
-                        CoreDataStack.sharedInstance().saveContext()
-                    }
-                    
-                } else {
-                    // If no URLs could be retrieved, then no cells will be displayed, so the
-                    // error message will be displayed in the center of the collection view.
-                    self.statusLabel.isHidden = false
-                    self.statusLabel.text = errorString!
-                }
             }
         }
     }
@@ -333,7 +299,7 @@ extension PhotoAlbumViewController {
         // Display the placeholder image in the cell, which will remain visible until the photo
         // that exists at the URL is loaded.
         cell.collectionCellImageView?.image = #imageLiteral(resourceName: "default-placeholder")
-        
+
         // Also begin animating the activty indicator.
         cell.activityIndicator.startAnimating()
         
@@ -355,24 +321,20 @@ extension PhotoAlbumViewController {
                 
             } else {
                 
-                // If no photo image data has been stored for the Photo, then download the image data
-                // right now from the Photo's stored URL.
-                if let storedPhotoURL = storedPhotoForCell.url {
+                // If no photo image data has been stored for the Photo, as long as the photo object has
+                // a url stored, then download the image data right now from the Photo's stored URL.
+                if storedPhotoForCell.url != nil {
                     
-                    // Then download the photo (task happens on background thread) and convert to a UIImage.
-                    FlickrClient.sharedInstance().downloadFlickrPhoto(storedPhotoURL) { (photo, imageData, success, errorString) in
+                    // Download the photo's image data and store in core data.
+                    FlickrClient.sharedInstance().downloadAndStoreFlickrPhoto(storedPhotoForCell) { (success, errorString) in
                         if success {
-                            // If photo/image data download is successful, store the image data in core data.
-                            storedPhotoForCell.imageData = imageData! as NSData
-                            
+                            // If image data download and storage successful, retrieve the latest
+                            // photos data for the pin.
+                            self.performPhotoFetchRequest(self.photoFetchedResultsController)
+                            // Then reload the collection view so that the
+                            // just-downloaded photo will be displayed in the cell.
                             performUIUpdatesOnMain {
-                                // Then, save the context after storing the photo's image data in core data.
-                                CoreDataStack.sharedInstance().saveContext()
-                                
-                                // And set image displayed in cell's imageView to the photo (UIImage) that was just downloaded.
-                                cell.collectionCellImageView?.image = photo
-                                // Lastly, stop animating the activity indicator once the image has been displayed in the cell.
-                                cell.activityIndicator.stopAnimating()
+                                self.collectionView.reloadData()
                             }
                         }
                         else {

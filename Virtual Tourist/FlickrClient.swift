@@ -8,11 +8,22 @@
 
 import Foundation
 import UIKit
+import CoreData
 
 class FlickrClient: NSObject {
     
-//    // MARK: Properties
-//    var flickrPhotosForLatLon: [UIImage] = []
+    // MARK: Shared Instance
+    
+    class func sharedInstance() -> FlickrClient {
+        struct Singleton {
+            static var sharedInstance = FlickrClient()
+        }
+        return Singleton.sharedInstance
+    }
+    
+    // MARK: Shared managed object context
+    
+    var sharedContext = CoreDataStack.sharedInstance().managedObjectContext
     
     // Shared session
     let session = URLSession.shared
@@ -22,7 +33,11 @@ class FlickrClient: NSObject {
     // This method returns an array 45 randomly chosen Flickr photos for a pin's geographic coordinates
     // in its completion handler, or if any part of the process was unsuccessful, returns a string
     // describing the error.
-    func getFlickrPhotosURLArrayForPin(_ latitude: Double, _ longitude: Double, completionHandlerForGetFlickrPhotosURLArrayForPin: @escaping (_ flickrPhotosURLArrayForPin: [String]?, _ success: Bool, _ errorString: String?) -> Void) {
+    func getAndStoreFlickrPhotoURLsForPin(_ pin: Pin) {
+
+        // Latitude and longitude of the pin
+        let latitude = pin.latitude
+        let longitude = pin.longitude
         
         // Method parameters for Flickr API calls.
         let methodParameters =
@@ -42,21 +57,14 @@ class FlickrClient: NSObject {
                 // If successful, retrieve an array describing the photos on that page of search results.
                 self.getFlickrPhotosFromPageInResults(methodParameters as [String : AnyObject], pageNumber: pageNumber!) { (flickrPhotoArrayForPage, success, errorString) in
                     if success {
-                        // If successful, choose up to 45 photos at random from that page.
-                        self.choosePhotoURLsFromFlickrPage(flickrPhotoArrayForPage!) { (flickrPhotosURLArrayForPin, success, errorString) in
-                            if success {
-                                // Finally, if successful, send the pin's photo URL array to the completion handler.
-                                completionHandlerForGetFlickrPhotosURLArrayForPin(flickrPhotosURLArrayForPin, true, nil)
-                            } else {
-                                completionHandlerForGetFlickrPhotosURLArrayForPin(nil, false, errorString)
-                            }
-                        }
+                        // If successful, choose up to 45 photos at random from that page, and store in core data (as URLs).
+                        self.randomlyChooseAndStorePhotoURLsFromFlickrPage(pin: pin, flickrPhotoArrayForPage: flickrPhotoArrayForPage!)
                     } else {
-                        completionHandlerForGetFlickrPhotosURLArrayForPin(nil, false, errorString)
+                        print(errorString as Any)
                     }
                 }
             } else {
-                completionHandlerForGetFlickrPhotosURLArrayForPin(nil, false, errorString)
+                print(errorString as Any)
             }
         }
     }
@@ -70,6 +78,42 @@ class FlickrClient: NSObject {
         let maximumLon = min(longitude + Constants.Flickr.SearchBBoxHalfWidth, Constants.Flickr.SearchLonRange.1)
         let maximumLat = min(latitude + Constants.Flickr.SearchBBoxHalfHeight, Constants.Flickr.SearchLatRange.1)
         return "\(minimumLon),\(minimumLat),\(maximumLon),\(maximumLat)"
+    }
+    
+    // MARK: Download and store a photo from Flickr
+    
+    // Downloads image data from a photo's url and stores in core data. Returns a UIImage in
+    // completion handler so that the photo can be displayed inside a collection view cell.
+    func downloadAndStoreFlickrPhoto(_ photo: Photo, completionHandlerForDownloadAndStoreFlickrPhoto: @escaping (_ success: Bool, _ errorString: String?) -> Void) {
+        
+        // Download the photo and send to the completion handler.
+        if let photoURL = photo.url {
+            let imageURL = URL(string: photoURL)
+            // Make sure image downloading happens on background thread.
+            DispatchQueue.global(qos: .background).async {
+                if let imageData = try? Data(contentsOf: imageURL!) {
+                    
+                    // Make sure that updates to core data happen on the main thread.
+                    self.sharedContext.performAndWait {
+                        // If successful, save the image data to the photo object in core data.
+                        photo.imageData = imageData as NSData
+
+                        // Save the context after saving the image data in core data.
+                        CoreDataStack.sharedInstance().saveContext()
+                    }
+                                        
+                    // If image data download successful, indicate this with completion handler.
+                    self.sharedContext.performAndWait {
+                        completionHandlerForDownloadAndStoreFlickrPhoto(true, nil)
+                    }
+                } else {
+                    self.sharedContext.performAndWait {
+                        let errorString = "Unable to download image from URL: \(imageURL!)"
+                        completionHandlerForDownloadAndStoreFlickrPhoto(false, errorString)
+                    }
+                }
+            }
+        }
     }
     
     // MARK: Flickr API
@@ -100,7 +144,8 @@ class FlickrClient: NSObject {
                     }
                     
                     // Pick a random page. Flickr's API returns results containing a maximum of somewhere
-                    // between 30 and 40 pages.
+                    // between 30 and 40 pages. Each returned page has 250 photos. Once a page is chosen at
+                    // random, 45 photos will then be chosen at random from that page.
                     let pageLimit = min(totalPages, 30)
                     let randomPage = Int(arc4random_uniform(UInt32(pageLimit))) + 1
                     completionHandlerForChooseRandomPageOfFlickrPhotoResults(randomPage, true, nil)
@@ -163,66 +208,70 @@ class FlickrClient: NSObject {
     
     // MARK: Randomly load photos from Flickr results page.
     
-    // Randomly select up to 45 photo URLs from the Flickr results page.
-    private func choosePhotoURLsFromFlickrPage(_ flickrPhotoArrayForPage: [[String:AnyObject]], completionHandlerForChoosePhotoURLsFromFlickrPage: @escaping (_ flickrPhotosURLArrayForPin: [String]?, _ success: Bool, _ errorString: String?) -> Void) {
-        
-        // The array of photos for the pin (coordinate pair)
-        var flickrPhotosURLArrayForPin: [String] = []
-        
+    // Randomly save up to 45 photo URLs from the Flickr results page as Photo objects in core data.
+    private func randomlyChooseAndStorePhotoURLsFromFlickrPage(pin: Pin, flickrPhotoArrayForPage: [[String:AnyObject]?]) {
+    
         // The number of photos on the Flickr results page.
         let numberOfPhotosOnPage = flickrPhotoArrayForPage.count
         
-        // Randomly select at least 45 photos from the Flickr results page:
+        // Randomly select at most 45 photos from the Flickr results page:
         
         // If less than 45 photos on results page, select them all.
         if numberOfPhotosOnPage < 45 {
             for entry in flickrPhotoArrayForPage {
                 // Does the photo have a key for 'url_m'?
-                if let photoURLString = entry[Constants.FlickrResponseKeys.MediumURL] as? String {
-                    flickrPhotosURLArrayForPin.append(photoURLString)
+                if let entry = entry, let photoURLString = entry[Constants.FlickrResponseKeys.MediumURL] as? String {
+                    
+                    // Create a new photo object in core data under the pin and save the URL to this photo object.
+                    savePhotoURLToCoreData(pin: pin, photoURL: photoURLString)
                 }
             }
+            
+            // Save the context after storing all photo URLs in core data.
+            performUIUpdatesOnMain {
+                CoreDataStack.sharedInstance().saveContext()
+            }
+            
         } else {
             // If more than 45 photos, randomly choose 45 indices within the range of
             // number of photos on results page, and select those photos.
             var indicesOfPhotosAlreadyChosen: [Int] = []
-            while flickrPhotosURLArrayForPin.count < 45 {
+            while indicesOfPhotosAlreadyChosen.count < 45 {
                 let randomUniqueIndex = generateUniqueRandomIndexNumber(upperLimit: numberOfPhotosOnPage, indicesOfPhotosAlreadyChosen: indicesOfPhotosAlreadyChosen)
+                
+                // Track all randomly chosen indices so that we don't randomly choose
+                // the same photo URL twice.
                 indicesOfPhotosAlreadyChosen.append(randomUniqueIndex)
-                let photoEntry = flickrPhotoArrayForPage[randomUniqueIndex]
+                
                 // Does the photo have a key for 'url_m'?
-                if let photoURLString = photoEntry[Constants.FlickrResponseKeys.MediumURL] as? String {
-                    flickrPhotosURLArrayForPin.append(photoURLString)
+                if let randomlyChosenPhotoEntry = flickrPhotoArrayForPage[randomUniqueIndex], let randomlyChosenPhotoURLString = randomlyChosenPhotoEntry[Constants.FlickrResponseKeys.MediumURL] as? String {
+                    
+                    // Create a new photo object in core data under the pin and save the URL to this photo object.
+                    savePhotoURLToCoreData(pin: pin, photoURL: randomlyChosenPhotoURLString)
                 }
             }
-        }
-        
-        // If at least one photo URL has been selected and added to the given pin's (coordinate pair's)
-        // photo URL array, send the pin's photo URL array to the completion handler.
-        if flickrPhotosURLArrayForPin.count > 0 {
-            completionHandlerForChoosePhotoURLsFromFlickrPage(flickrPhotosURLArrayForPin, true, nil)
-        } else {
-            let errorString = "This pin has no images."
-            completionHandlerForChoosePhotoURLsFromFlickrPage(nil, false, errorString)
+            
+            // Save the context after storing all photo URLs in core data.
+            performUIUpdatesOnMain {
+                CoreDataStack.sharedInstance().saveContext()
+            }
         }
     }
-    
-    // MARK: Load a photo from Flickr
-    
-    // Downloads a photo from a Flickr photo URL.
-    func downloadFlickrPhoto(_ flickrPhotoURL: String, completionHandlerForDownloadFlickrPhoto: @escaping (_ photo: UIImage?, _ imageData: Data?, _ success: Bool, _ errorString: String?) -> Void) {
-        // Make sure image downloading happens on background thread.
-        DispatchQueue.global(qos: .background).async {
-            // Download the photo and send to the completion handler.
-            let imageURL = URL(string: flickrPhotoURL)
-            if let imageData = try? Data(contentsOf: imageURL!) {
-                // If successful, convert data to a UIImage
-                let photo = UIImage(data: imageData)
-                completionHandlerForDownloadFlickrPhoto(photo, imageData, true, nil)
-            } else {
-                let errorString = "Unable to download image from URL: \(imageURL!)"
-                completionHandlerForDownloadFlickrPhoto(nil, nil, false, errorString)
-            }
+
+    // Saves a new photo object to core data under the pin parameter passed
+    // to this method. Sets the object's url attribute to the URL passed
+    // to this method.
+    func savePhotoURLToCoreData(pin: Pin, photoURL: String) {
+        
+        // Updates to core data need to happen on the main thread.
+        performUIUpdatesOnMain {
+            // Create a new photo object in core data
+            let photoToSave = Photo(context: self.sharedContext)
+            // Set the url property of the newly created photo to the
+            // URL string retrieved from Flickr.
+            photoToSave.url = photoURL
+            // Ensure that newly saved photo is associated with currently selected Pin
+            photoToSave.pin = pin
         }
     }
     
@@ -257,15 +306,6 @@ class FlickrClient: NSObject {
         }
         
         return components.url!
-    }
-    
-    // MARK: Shared Instance
-    
-    class func sharedInstance() -> FlickrClient {
-        struct Singleton {
-            static var sharedInstance = FlickrClient()
-        }
-        return Singleton.sharedInstance
     }
 }
 
