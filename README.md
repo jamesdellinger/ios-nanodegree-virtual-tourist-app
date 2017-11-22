@@ -23,4 +23,4 @@ A concurrency-tested and completely thread-safe implementation, with the followi
     
     <img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-22%20at%2011.57.57.png" height="400">
     
-    
+    <img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-22%20at%2012.18.54.png" height="400">
