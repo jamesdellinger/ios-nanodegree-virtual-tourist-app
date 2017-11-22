@@ -6,24 +6,21 @@
 
 This repository contains the Virtual Tourist app project for the iOS Persistence and Core Data course in Udacity's iOS Nanodegree.
 
-With the following user-friendly tweaks:
+A concurrency-tested and completely thread-safe implementation, with the following user-friendly tweaks:
 
-1. A more visually pleasing custom activity indicator spinner and gray-tinted overlay that appears underneath it. They are defined
-    inside a custom class, and managed with a custom controller class. This makes it easy to call and dismiss the activity
-    spinner during any network call, each with one line of code, from any view controller in the app:
+1. Tapping "Edit" causes the map view to rise up, revealing the red bar underneath. Makes for greater similarity with how "Delete"
+    indicators are revealed in other iOS elements, such as table views:
 
-    <img src="https://github.com/jamesdellinger/ios-nanodegree-on-the-map-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-13%20at%2020.56.28.png" height="400">
+    <img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-22%20at%2011.56.27.png" height="400">
+
+2. Can tap on pin displayed above a location's photo album to reveal a nicely formatted address. If user has already dropped
+    several pins, it can be easy to forget which pin's album is being viewed:
+
+    <img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-22%20at%2011.57.34.png" height="400">
+
+3. Finally, it is possible to long press on any cell inside the collection view to display a larger size of a photo. The screen
+    displaying this blown-up photo also contains an affordance that allows user to share the photo with any of their friends.
     
-    <img src="https://github.com/jamesdellinger/ios-nanodegree-on-the-map-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-13%20at%2020.56.54.png" height="400">
+    <img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-22%20at%2011.57.57.png" height="400">
     
-    <img src="https://github.com/jamesdellinger/ios-nanodegree-on-the-map-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-13%20at%2020.57.44.png" height="400">
-
-2. After user adds or updates their location information and taps 'FINISH,' the table and map views are automatically reloaded
-    as the tab bar view controller containing them is popped back to. This is accomplished via a custom popToRootViewController()
-    method defined in an extension to the UINavigationController class. Once the animation is completed, the custom method's
-    completion handler calls the method that reloads the data and view for the map and table views.
     
-    This means that the user doesn't have to tap the 'refresh' button in order to see the new location data they just entered get
-    displayed. The new data will be right there waiting for them when the map/table view appears after they tap 'FINISH':
-
-    <img src="https://github.com/jamesdellinger/ios-nanodegree-on-the-map-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-13%20at%2020.57.47.png" height="400">
