@@ -10,7 +10,7 @@ This repository contains the Virtual Tourist app project for the iOS Persistence
 
 The Virtual Tourist app downloads and stores images from Flickr. The app allows users to drop pins on a map, as if they were stops on a tour. Users will then be able to download pictures for the location and persist both the pictures, and the association of the pictures with the pin.
 
-My implementation is concurrency-tested and completely thread-safe, with the following user-friendly tweaks:
+My implementation is concurrency-tested and completely thread-safe, with the following unique user-friendly tweaks:
 
 1. Tapping "Edit" causes the map view to rise up, revealing the red bar underneath. Makes for greater similarity with how "Delete"
     indicators are revealed in other iOS elements, such as table views:
