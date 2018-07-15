@@ -1,10 +1,10 @@
 # iOS Developer Nanodegree: Virtual Tourist App
-*Build a thread-safe app that uses Core Data to persist the app's state, settings, and downloaded photos.*
+*Building a thread-safe app that uses Core Data to persist the app's state, settings, and downloaded photos.*
 
-<img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/iosndlogo.jpg" alt="iOS Developer Nanodegree logo" height="70" >
+<img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/iosndlogo.jpg" alt="iOS Developer Nanodegree logo" height="140" >
 
 ## Overview
-This repository contains the Virtual Tourist app project for the iOS Persistence and Core Data course in Udacity's iOS Nanodegree.
+This repository contains the Virtual Tourist app project for the **iOS Persistence and Core Data** course in Udacity's [iOS Nanodegree](https://www.udacity.com/course/ios-developer-nanodegree--nd003).
 
 The Virtual Tourist app downloads and stores images from Flickr. The app allows users to drop pins on a map, as if they were stops on a tour. Users will then be able to download pictures for the location and persist both the pictures, and the association of the pictures with the pin.
 
@@ -28,8 +28,8 @@ My implementation is concurrency-tested and completely thread-safe, with the fol
 
     <img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/Screenshots/Simulator%20Screen%20Shot%20-%20iPhone%208%20Plus%20-%202017-11-22%20at%2012.18.54.png" height="400">
 
-### Project Grading and Evaluation
+## Project Grading and Evaluation
 
-[Project Review](https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/ios-nanodegree-virtual-tourist-app-review.pdf)
+* [Project Review](https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/ios-nanodegree-virtual-tourist-app-review.pdf)
 
-[Project Grading Rubric](https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/virtual-tourist-app-specs-and-rubric.pdf)
+* [Project Grading Rubric](https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/virtual-tourist-app-specs-and-rubric.pdf)
