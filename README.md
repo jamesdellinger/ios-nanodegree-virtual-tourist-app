@@ -1,14 +1,14 @@
 # iOS Developer Nanodegree: Virtual Tourist App
 *Building a thread-safe app that uses Core Data to persist the app's state, settings, and downloaded photos.*
 
-<img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/iosndlogo.jpg" alt="iOS Developer Nanodegree logo" height="140" >
+<img src="https://github.com/jamesdellinger/ios-nanodegree-virtual-tourist-app/blob/master/iosndlogo.jpg" alt="iOS Developer Nanodegree logo" height="100" >
 
 ## Overview
-This repository contains the Virtual Tourist app project for the **iOS Persistence and Core Data** course in Udacity's [iOS Nanodegree](https://www.udacity.com/course/ios-developer-nanodegree--nd003).
+This repository contains my Virtual Tourist app project for the **iOS Persistence and Core Data** course in Udacity's [iOS Nanodegree](https://www.udacity.com/course/ios-developer-nanodegree--nd003).
 
 The Virtual Tourist app downloads and stores images from Flickr. The app allows users to drop pins on a map, as if they were stops on a tour. Users will then be able to download pictures for the location and persist both the pictures, and the association of the pictures with the pin.
 
-My implementation is concurrency-tested and completely thread-safe, with the following unique user-friendly tweaks:
+My code is concurrency-tested and completely thread-safe.
 
 ## My Implementation's User-friendly Tweaks
 1. Tapping "Edit" causes the map view to rise up, revealing the red bar underneath. Makes for greater similarity with how "Delete"
